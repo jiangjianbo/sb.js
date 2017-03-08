@@ -14,8 +14,11 @@ if (!this.window) {
 }
 
 sb.Project = function (pathOrBuffer) {
-	if (typeof pathOrBuffer === 'string') { 
+	if (typeof pathOrBuffer === 'string') {
 		this.path = pathOrBuffer;
+	} else if(pathOrBuffer && pathOrBuffer.name && pathOrBuffer.lastModified) {
+		this.file = pathOrBuffer;
+		this.path = pathOrBuffer.name;
 	} else {
 		this.buffer = pathOrBuffer;
 	}
@@ -27,13 +30,34 @@ sb.extend(sb.Project.prototype, {
 	open: function (onload) {
 		var self = this;
 		if (this.path) {
-			var xhr = new XMLHttpRequest();
-			xhr.open('GET', this.path, true);
-			xhr.responseType = 'arraybuffer';
-			xhr.onload = function () {
-				self.read(xhr.response, onload);
-			};
-			xhr.send();
+			if( window && window.location && window.location.protocol == "file:" ){
+				// 增加的本地读取代码，参考  https://www.html5rocks.com/en/tutorials/file/dndfiles/
+				// Check for the various File API support.
+				if (window.File && window.FileReader && window.FileList && window.Blob) {
+					var reader = new FileReader();
+
+					// Closure to capture the file information.
+					reader.onload = (function() {
+						return function(e) {
+						  	self.read(reader.result, onload);
+						};
+					})();
+
+					// Read in the image file as a data URL.
+					reader.readAsArrayBuffer(this.file);
+				} else {
+				  	alert('The File APIs are not fully supported in this browser.');
+				}
+			} else {
+				// 原版的代码
+				var xhr = new XMLHttpRequest();
+				xhr.open('GET', this.path, true);
+				xhr.responseType = 'arraybuffer';
+				xhr.onload = function () {
+					self.read(xhr.response, onload);
+				};
+				xhr.send();
+			}
 		} else {
 			this.read(this.buffer, onload);
 		}
@@ -71,7 +95,7 @@ sb.extend(sb.Project.prototype, {
 		}
 		var zip = new JSZip(string, {base64:false});
 		var images = zip.file(/[0-9]+\.png/).sort(function (a, b) {
-			return parseInt(a.name, 10) - parseInt(b.name, 10);  
+			return parseInt(a.name, 10) - parseInt(b.name, 10);
 		}).map(function (file) {
 			var canvas = sb.createCanvas(1, 1);
 			var image = new Image();
@@ -94,7 +118,7 @@ sb.extend(sb.Project.prototype, {
 		};
 		var stage = JSON.parse(zip.file('project.json').data);
 		fixImages(stage.costumes);
-		
+
 		var children = stage.children;
 		i = children.length;
 		while (i--) {
@@ -102,7 +126,7 @@ sb.extend(sb.Project.prototype, {
 				fixImages(children[i].costumes);
 			}
 		}
-		
+
 		var defaults = {
 			variables: [],
 			volume: 100, // TODO: is this in sb2?
@@ -111,7 +135,7 @@ sb.extend(sb.Project.prototype, {
 		var sprites = stage.children.filter(function (child) {
 			return child.objName;
 		});
-		
+
 		sprites.concat([stage]).forEach(function (object) {
 			Object.keys(defaults).forEach(function (d) {
 				if (!object[d]) {
@@ -119,23 +143,23 @@ sb.extend(sb.Project.prototype, {
 				}
 			})
 		});
-		
+
 		this.info = stage.info;
 		delete stage.info;
 		this.stage = stage;
-		
+
 		onload(true);
 	},
-	
+
 	save1: function () {
 		var stream = new sb.WriteStream();
 		var objectStream = new sb.ObjectStream(stream);
-		
+
 		stream.utf8('ScratchV02');
-		
+
 		var sizeIndex = stream.index;
 		stream.uint32(0);
-		
+
 		var self = this;
 		var size = objectStream.writeObject(Object.keys(this.info).map(function (key) {
 			return [key, self.info[key]];
@@ -146,9 +170,9 @@ sb.extend(sb.Project.prototype, {
 		stream.index = sizeIndex;
 		stream.uint32(size);
 		stream.index = end;
-		
+
 		objectStream.writeObject(this.stage, 125);
-		
+
 		return stream.bytes();
 	}
 });
@@ -167,11 +191,90 @@ sb.extend(sb.ReadStream.prototype, {
 		this.index += i;
 	},
 	utf8: function (length) {
-		var string = '';
+		var array = [];
 		for (var i = 0; i < length; i++) {
-			string += String.fromCharCode(this.uint8());
+			array.push(this.uint8());
 		}
-		return string;
+		// copy from http://stackoverflow.com/questions/13356493/decode-utf-8-with-javascript
+		var out, i, len, c;
+	    var char2, char3;
+
+	    out = "";
+	    len = array.length;
+	    i = 0;
+
+	    // XXX: Invalid bytes are ignored
+	    while(i < len) {
+	      c = array[i++];
+	      if (c >> 7 == 0) {
+	        // 0xxx xxxx
+	        out += String.fromCharCode(c);
+	        continue;
+	      }
+
+	      // Invalid starting byte
+	      if (c >> 6 == 0x02) {
+	        continue;
+	      }
+
+	      // #### MULTIBYTE ####
+	      // How many bytes left for thus character?
+	      var extraLength = null;
+	      if (c >> 5 == 0x06) {
+	        extraLength = 1;
+	      } else if (c >> 4 == 0x0e) {
+	        extraLength = 2;
+	      } else if (c >> 3 == 0x1e) {
+	        extraLength = 3;
+	      } else if (c >> 2 == 0x3e) {
+	        extraLength = 4;
+	      } else if (c >> 1 == 0x7e) {
+	        extraLength = 5;
+	      } else {
+	        continue;
+	      }
+
+	      // Do we have enough bytes in our data?
+	      if (i+extraLength > len) {
+	        var leftovers = array.slice(i-1);
+
+	        // If there is an invalid byte in the leftovers we might want to
+	        // continue from there.
+	        for (; i < len; i++) if (array[i] >> 6 != 0x02) break;
+	        if (i != len) continue;
+
+	        // All leftover bytes are valid.
+	        return out;
+	      }
+	      // Remove the UTF-8 prefix from the char (res)
+	      var mask = (1 << (8 - extraLength - 1)) - 1,
+	          res = c & mask, nextChar, count;
+
+	      for (count = 0; count < extraLength; count++) {
+	        nextChar = array[i++];
+
+	        // Is the char valid multibyte part?
+	        if (nextChar >> 6 != 0x02) {break;};
+	        res = (res << 6) | (nextChar & 0x3f);
+	      }
+
+	      if (count != extraLength) {
+	        i--;
+	        continue;
+	      }
+
+	      if (res <= 0xffff) {
+	        out += String.fromCharCode(res);
+	        continue;
+	      }
+
+	      res -= 0x10000;
+	      var high = ((res >> 10) & 0x3ff) + 0xd800,
+	          low = (res & 0x3ff) + 0xdc00;
+	      out += String.fromCharCode(high, low);
+	    }
+
+	    return out;
 	},
 	arrayBuffer: function (length, reverse) {
 		if (reverse) {
@@ -361,23 +464,23 @@ sb.extend(sb.ObjectStream.prototype, {
 	writeObject: function (object, id, hint) {
 		var start = this.stream.index;
 		this.stream.utf8('ObjS\x01Stch\x01');
-		
+
 		var table = [];
 		table.raw = [];
-		
+
 		this.object = object;
-		
+
 		this.createObject(table, object, id, hint);
-		
+
 		this.stream.uint32(table.length);
-		
+
 		var self = this;
 		table.forEach(function (object) {
 			self.writeTableObject(object);
 		});
-		
+
 		delete this.object;
-		
+
 		return this.stream.index - start;
 	},
 	createObject: function (table, object, id, hint) {
@@ -394,12 +497,12 @@ sb.extend(sb.ObjectStream.prototype, {
 		};
 		table.push(record);
 		var ref = {$: table.length};
-		
+
 		var format = this.formats[id];
 		if (format) {
 			var self = this;
 			if (id < 99) {
-				record.value = format.write.call(this, object, table, hint); 
+				record.value = format.write.call(this, object, table, hint);
 			} else {
 				record.version = format.version;
 				record.value = format.write.map(function (field) {
@@ -419,7 +522,7 @@ sb.extend(sb.ObjectStream.prototype, {
 		if (this.changingIds.indexOf(object.id) === -1) {
 			this.stream.uint8(object.id);
 		}
-		
+
 		if (object.id < 99) {
 			this.writeFixedFormat(object);
 		} else {
@@ -429,7 +532,7 @@ sb.extend(sb.ObjectStream.prototype, {
 	writeUserFormat: function (object) {
 		this.stream.uint8(object.version);
 		this.stream.uint8(object.value.length);
-		
+
 		var self = this;
 		object.value.forEach(function (field) {
 			self.writeInline(field);
@@ -530,9 +633,9 @@ sb.extend(sb.ObjectStream.prototype, {
 		} else {
 			console.warn('Cannot determine type of', object);
 		}
-		
+
 		this.stream.uint8(id);
-		
+
 		switch (id) {
 		case 4: // SmallInteger
 			this.stream.int32(object);
@@ -551,25 +654,25 @@ sb.extend(sb.ObjectStream.prototype, {
 			break;
 		}
 	},
-	
+
 	readObject: function () {
 		if (this.stream.utf8(10) !== 'ObjS\x01Stch\x01') {
 			throw new Error('Not an object');
 		}
 		var size = this.stream.uint32();
-		
+
 		var table = [];
-		
+
 		var i = size;
 		while (i--) {
 			table.push(this.readTableObject());
 		}
-		
+
 		i = size;
 		while (i--) {
 			this.fixObjectRefs(table, table[i]);
 		}
-		
+
 		return this.jsonify(this.deRef(table, table[0]));
 	},
 	readTableObject: function () {
@@ -769,35 +872,35 @@ sb.extend(sb.ObjectStream.prototype, {
 	},
 	buildImage: function (image) {
 		var bitmap = image.bitmap;
-		
+
 		var canvas = image;
 		var ctx = canvas.getContext('2d');
-		
+
 		var data = ctx.createImageData(image.width, image.height);
-		
+
 		if (image.depth === 32) {
 			if (!bitmap.bitmap) {
 				this.decompressBitmapFlip(bitmap, data.data);
 			}
 		} else if (image.depth <= 8) {
 			var indexes = bitmap.bitmap ? bitmap : this.decompressBitmap(bitmap);
-			
+
 			var bits;
-			
-		  
+
+
 			var i,
 				j = 0,
 				k, l;
-			
+
 			if (image.depth === 8) {
 				bits = indexes;
 			} else {
 				bits = new Uint8Array(indexes.length * (8 / image.depth));
-				
+
 				var mask = (1 << image.depth) - 1;
-				
+
 				var parts = 8 / image.depth;
-				
+
 				for (i = 0; i < indexes.length; i++) {
 					l = indexes[i];
 					k = 8;
@@ -806,15 +909,15 @@ sb.extend(sb.ObjectStream.prototype, {
 					}
 				}
 			}
-			
+
 			var colors = image.colors || this.squeakColors;
 			var array = data.data;
-			
+
 			i = 0;
 			j = 0;
-			
+
 			var c, b;
-			
+
 			k = array.length;
 			while (k--) {
 				c = colors[bits[j++]];
@@ -828,9 +931,9 @@ sb.extend(sb.ObjectStream.prototype, {
 				}
 			}
 		}
-		
+
 		ctx.putImageData(data, 0, 0);
-		
+
 		return canvas;
 	},
 	decompressBitmapFlip: function (src, out) {
@@ -843,9 +946,9 @@ sb.extend(sb.ObjectStream.prototype, {
 		if (!out) {
 			out = new Uint8Array(length);
 		}
-		
+
 		var j, k, l, m, n, i = 0;
-		
+
 		while (i < length) {
 			k = nInt();
 			l = k >> 2;
@@ -891,9 +994,9 @@ sb.extend(sb.ObjectStream.prototype, {
 		};
 		var length = nInt() * 4;
 		var out = new Uint8Array(length);
-		
+
 		var j, k, l, m, n, i = 0;
-		
+
 		while (i < length) {
 			k = nInt();
 			l = k >> 2;
@@ -931,7 +1034,7 @@ sb.extend(sb.ObjectStream.prototype, {
 		}
 		return out;
 	},
-	
+
 	jsonify: function (object, parent) {
 		var self = this,
 			json;
@@ -949,7 +1052,7 @@ sb.extend(sb.ObjectStream.prototype, {
 				} else {
 					tmp = value;
 				}
-				
+
 				json[field] = this.jsonify(tmp, object);
 			}
 			return json;
@@ -966,7 +1069,7 @@ sb.extend(sb.ObjectStream.prototype, {
 		}
 		return object;
 	},
-	
+
 	formats: {
 		20: {
 			write: function (object, table, hint) {
@@ -1105,10 +1208,10 @@ sb.extend(sb.ObjectStream.prototype, {
 					}, 33);
 				},
 				function (object, table) { // owner
-					return this.createObject(table, this.object, 125);	
+					return this.createObject(table, this.object, 125);
 				},
 				function (object, table) { // submorphs
-					return this.createObject(table, [], 20);	
+					return this.createObject(table, [], 20);
 				},
 				function (object, table) { // color
 					return this.createObject(table, {
@@ -1313,7 +1416,7 @@ sb.extend(sb.ObjectStream.prototype, {
 				sound: null
 			},
 			write: [
-				
+
 			]
 		},
 		175: {
@@ -1341,7 +1444,7 @@ sb.extend(sb.ObjectStream.prototype, {
 				}
 			},
 			write: [
-				
+
 			]
 		}
 	}
@@ -1383,7 +1486,7 @@ sb.blocks = {
 			return [block[2], block[1], block[3]];
 		},
 		'getAttribute:of:': function (block) {
-			return ['getAttribute:of:', block[1], sb.objectName(block[2])]; 
+			return ['getAttribute:of:', block[1], sb.objectName(block[2])];
 		},
 		'touching:': function (block) {
 			return ['touching:', sb.objectName(block[1])];
