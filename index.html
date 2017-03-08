@@ -1,5 +1,9 @@
-<html>
-  <head>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head >
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+
     <script type="text/javascript" src="js/sb.js"></script>
     <script type="text/javascript" src="js/jszip/jszip.js"></script>
     <script type="text/javascript" src="js/jszip/jszip-load.js"></script>
@@ -7,28 +11,624 @@
     <script type="text/javascript" src="js/jszip/jszip-inflate.js"></script>
   </head>
   <body>
-    <input id="path" type="text">
+    <input id="path" type="file">
   	<button id="read">read</button>
+    <div id="main">
+        <div id="icons" style="float: left; width: 100px; height: 100%; border: 1px solid red;">
+
+        </div>
+        <div id="scriptpad" style="margin-left: 110px; border: 1px solid blue; ">
+
+        </div>
+    </div>
     <script type="text/javascript">
     	document.getElementById('read').addEventListener('click', function () {
-			window.project1 = new sb.Project('Summer.sb');
-			project1.open(function (success) {
-				console.log('Project1:', project1);
-			});
-			
+			//window.project1 = new sb.Project('Summer.sb');
+			//project1.open(function (success) {
+			//	console.log('Project1:', project1);
+			//});
+
 			/*window.project2 = new sb.Project('MarioBros.sb2');
 			project2.open(function (success) {
 				console.log('Project2:', project2);
 			});*/
-			
-			var path = document.getElementById('path').value;
-			if (path !== '') {
-				window.project = new sb.Project(path);
+
+			var path = document.getElementById('path').files;
+			if (path.length != 0) {
+				window.project = new sb.Project(path[0]);
 				project.open(function (success) {
 					console.log('Project:', project);
+                    visit(project, new sb.Visitor());
 				});
 			}
 		});
+
+        sb.Visitor = function(){
+        };
+
+        sb.extend(sb.Visitor.prototype, {
+            visitInfo: function(info){
+                // info { author: "", thumbnail: <canvas>, scratch-version: "1.4 of 30-Jun-09",
+                // os-version: "NT", language: "zh_CN", platform: "Win32", history: "2014-3-31 13:44:52	save	小金鱼		 " }
+            },
+            visitStage: function(stage){
+                // Object { objName: "舞台", sounds: Array[1], costumes: Array[2],
+                // scratchX: -114, scratchY: 79, scale: 0.5536757541863351, direction: 96, rotationStyle: "normal",
+                // indexInLibrary: 0, isDraggable: true, visiable: true, volume: 100,
+                // currentCostumeIndex: 1, children: Array[3], variables: Array[0],
+                // lists: Array[0], scripts: Array[0], volume: 100, tempoBPM: 60 }
+                var i;
+                if( stage.costumes ){
+                    for(i = 0; i < stage.costumes.length; ++i){
+                        this.visitCostume(stage.costumes[i], stage);
+                    }
+                }
+                if( stage.variables ){
+                    for(i = 0; i < stage.variables.length; ++i){
+                        this.visitVariable(stage.variables[i], stage);
+                    }
+                }
+                if( stage.lists ){
+                    for(i = 0; i < stage.lists.length; ++i){
+                        this.visitList(stage.lists[i], stage);
+                    }
+                }
+                if( stage.sounds ){
+                    for(i = 0; i < stage.sounds.length; ++i){
+                        this.visitSound(stage.sounds[i], stage);
+                    }
+                }
+                if( stage.scripts ){
+                    for(i = 0; i < stage.scripts.length; ++i){
+                        var scr = stage.scripts[i];
+                        this.visitScript(scr[0], scr[1], scr[2], stage);
+                    }
+                }
+                if( stage.children ){
+                    for(i = 0; i < stage.children.length; ++i){
+                        this.visitStage(stage.children[i], stage);
+                    }
+                }
+            },
+            visitCostume: function(costume, stage){
+                // Object { costumeName: "背景1", rotationCenterX: 240, rotationCenterY: 180, image: <canvas> }
+            },
+            visitVariable: function(variable, stage){},
+            visitList: function(list, stage){},
+            visitSound: function(sound, stage){
+                // Object { soundName: "pop音效", sound: null }
+            },
+            visitScript: function(x, y, blocks, stage){
+                if( blocks && blocks.length > 0 ){
+                    for(var i = 0; i < blocks.length; ++i){
+                        this.visitCode(blocks[i]);
+                    }
+                }
+            },
+            visitCode: function(blk){
+                if( blk == null || blk.length == 0 ) return;
+
+                var args = [], funcName = blk[0];
+                for(var aIdx = 1; aIdx < blk.length; ++aIdx)
+                    args.push(blk[aIdx]);
+                var func = this[funcName];
+                if( typeof(func) == "function" ){
+                    func.apply(this, args);
+                }else{
+                    this.visitUnknownCode(blk);
+                }
+            },
+            visitUnknownCode: function(block){
+                // array
+            },
+
+            // https://wiki.scratch.mit.edu/wiki/Scratch_File_Format_(2.0)/Block_Selectors
+            "-": function(){
+            	// () - ()
+            },
+            "*": function(){
+            	// () * ()
+            },
+            "/": function(){
+            	// () / ()
+            },
+            "&": function(){
+            	// () and ()
+            },
+            "%": function(){
+            	// () Mod ()
+            },
+            "+": function(){
+            	// () + ()
+            },
+            "<": function(){
+            	// () < ()
+            },
+            "=": function(){
+            	// () = ()
+            },
+            ">": function(){
+            	// () > ()
+            },
+            "|": function(){
+            	// () or ()
+            },
+            "abs": function(){
+            	// Abs ()
+            },
+            "answer": function(){
+            	// Answer
+            },
+            "append:toList:": function(){
+            	// Add () to ()
+            },
+            "backgroundIndex": function(){
+            	// Backdrop #
+            },
+            "bounceOffEdge": function(){
+            	// If on Edge, Bounce
+            },
+            "broadcast:": function(){
+            	// Broadcast ()
+            },
+            "changeGraphicEffect:by:": function(){
+            	// Change () Effect by ()
+            },
+            "changePenHueBy:": function(){
+            	// Change Pen Color by ()
+            },
+            "changePenShadeBy:": function(){
+            	// Change Pen Shade by ()
+            },
+            "changePenSizeBy:": function(){
+            	// Change Pen Size by ()
+            },
+            "changeSizeBy:": function(){
+            	// Change Size by ()
+            },
+            "changeTempoBy:": function(){
+            	// Change Tempo by ()
+            },
+            "changeVar:by:": function(){
+            	// Change () by ()
+            },
+            "changeVolumeBy:": function(){
+            	// Change Volume by ()
+            },
+            "changeXposBy:": function(){
+            	// Change X by ()
+            },
+            "changeYposBy:": function(){
+            	// Change Y by ()
+            },
+            "clearPenTrails": function(){
+            	// Clear
+            },
+            "CLR_COUNT": function(){
+            	// Clear Counter
+            },
+            "color:sees:": function(){
+            	// Color () is Touching ()?
+            },
+            "comeToFront": function(){
+            	// Go to Front
+            },
+            "computeFunction:of:": function(){
+            	// () of () (Operators block)
+            },
+            "concatenate:with:": function(){
+            	// Join ()()
+            },
+            "contentsOfList:": function(){
+            	// () (List block)
+            },
+            "costumeIndex": function(){
+            	// Costume #
+            },
+            "costumeName": function(){
+            	// Costume Name
+            },
+            "COUNT": function(){
+            	// Counter
+            },
+            "createCloneOf": function(){
+            	// Create Clone of ()
+            },
+            "deleteClone": function(){
+            	// Delete This Clone
+            },
+            "deleteLine:ofList:": function(){
+            	// Delete () of ()
+            },
+            "distanceTo:": function(){
+            	// Distance to ()
+            },
+            "doAsk": function(){
+            	// Ask () and Wait
+            },
+            "doBroadcastAndWait": function(){
+            	// Broadcast () and Wait
+            },
+            "doForever": function(){
+            	// Forever
+            },
+            "doForeverIf": function(){
+            	// Forever If ()
+            },
+            "doForLoop": function(){
+            	// For Each () in ()
+            },
+            "doIf": function(){
+            	// If () Then
+            },
+            "doIfElse": function(){
+            	// If () Then, Else
+            },
+            "doPlaySoundAndWait": function(){
+            	// Play Sound () Until Done
+            },
+            "doRepeat": function(){
+            	// Repeat ()
+            },
+            "doReturn": function(){
+            	// Stop Script
+            },
+            "doUntil": function(condition, blocks){
+                this.visitCode(condition);
+                this.visitCode(blocks);
+            },
+            "doWaitUntil": function(){
+            	// Wait Until ()
+            },
+            "doWhile": function(){
+            	// While ()
+            },
+            "drum:duration:elapsed:from:": function(){
+            	// Play Drum () for () Beats
+            },
+            "filterReset": function(){
+            	// Clear Graphic Effects
+            },
+            "forward:": function(){
+            	// Move () Steps
+            },
+            "fxTest": function(){
+            	// Color FX Test ()
+            },
+            "getAttribute:of:": function(){
+            	// () of () (Sensing block)
+            },
+            "getLine:ofList:": function(){
+            	// Item () of ()
+            },
+            "getParam": function(){
+            	// custom block parameter
+            },
+            "getUserId": function(){
+            	// User ID
+            },
+            "getUserName": function(){
+            	// Username
+            },
+            "glideSecs:toX:y:elapsed:from:": function(){
+            	// Glide () Secs to X: () Y: ()
+            },
+            "goBackByLayers:": function(){
+            	// Go Back () Layers
+            },
+            "gotoSpriteOrMouse:": function(){
+            	// Go to ()
+            },
+            "gotoX:y:": function(){
+            	// Go to X: () Y: ()
+            },
+            "heading": function(){
+            	// Direction
+            },
+            "heading:": function(){
+            	// Point in Direction ()
+            },
+            "hide": function(){
+            	// Hide
+            },
+            "hideAll": function(){
+            	// Hide All Sprites
+            },
+            "hideList:": function(){
+            	// Hide List ()
+            },
+            "hideVariable:": function(){
+            	// Hide Variable ()
+            },
+            "INCR_COUNT": function(){
+            	// Incr Counter
+            },
+            "insert:at:ofList:": function(){
+            	// Insert () at () of ()
+            },
+            "instrument:": function(){
+            	// Set Instrument to ()
+            },
+            "isLoud": function(){
+            	// Loud?
+            },
+            "keyPressed:": function(){
+            	// Key () Pressed?
+            },
+            "letter:of:": function(){
+            	// Letter () of ()
+            },
+            "lineCountOfList:": function(){
+            	// Length of () (List block)
+            },
+            "list:contains:": function(){
+            	// () Contains ()
+            },
+            "lookLike:": function(){
+            	// Switch Costume to ()
+            },
+            "midiInstrument:": function(){
+            	// Set Instrument to ()
+            },
+            "mousePressed": function(){
+            	// Mouse Down?
+            },
+            "mouseX": function(){
+            	// Mouse X
+            },
+            "mouseY": function(){
+            	// Mouse Y
+            },
+            "nextCostume": function(){
+            	// Next Costume
+            },
+            "nextScene": function(){
+            	// Next Backdrop
+            },
+            "not": function(){
+            	// Not ()
+            },
+            "noteOn:duration:elapsed:from:": function(){
+            	// Play Note () for () Beats
+            },
+            "obsolete": function(){
+            	// Obsolete
+            },
+            "penColor:": function(){
+            	// Set Pen Color to ()
+            },
+            "penSize:": function(){
+            	// Set Pen Size to ()
+            },
+            "playDrum": function(){
+            	// Play Drum () for () Beats
+            },
+            "playSound:": function(){
+            	// Play Sound ()
+            },
+            "pointTowards:": function(){
+            	// Point Towards ()
+            },
+            "putPenDown": function(){
+            	// Pen Down
+            },
+            "putPenUp": function(){
+            	// Pen Up
+            },
+            "randomFrom:to:": function(){
+            	// Pick Random () to ()
+            },
+            "readVariable": function(){
+            	// () (Variables block)
+            },
+            "rest:elapsed:from:": function(){
+            	// Rest for () Beats
+            },
+            "rounded": function(){
+            	// Round ()
+            },
+            "say:": function(){
+            	// Say ()
+            },
+            "say:duration:elapsed:from:": function(){
+            	// Say () for () Secs
+            },
+            "sayNothing": function(){
+            	// Say Nothing
+            },
+            "scale": function(){
+            	// Size
+            },
+            "sceneName": function(){
+            	// Backdrop Name
+            },
+            "scrollAlign": function(){
+            	// Align Scene ()
+            },
+            "scrollRight": function(){
+            	// Scroll Right ()
+            },
+            "scrollUp": function(){
+            	// Scroll Up ()
+            },
+            "senseVideoMotion": function(){
+            	// Video () on ()
+            },
+            "sensor:": function(){
+            	// () Sensor Value
+            },
+            "sensorPressed:": function(){
+            	// Sensor ()?
+            },
+            "setGraphicEffect:to:": function(){
+            	// Set () Effect to ()
+            },
+            "setLine:ofList:to:": function(){
+            	// Replace Item () of () With ()
+            },
+            "setPenHueTo:": function(){
+            	// Set Pen Color to ()
+            },
+            "setPenShadeTo:": function(){
+            	// Set Pen Shade to ()
+            },
+            "setRotationStyle": function(){
+            	// Set Rotation Style ()
+            },
+            "setSizeTo:": function(){
+            	// Set Size to ()%
+            },
+            "setTempoTo:": function(){
+            	// Set Tempo to () bpm
+            },
+            "setVar:to:": function(){
+            	// Set () to ()
+            },
+            "setVideoState": function(){
+            	// Turn Video ()
+            },
+            "setVideoTransparency": function(){
+            	// Set Video Transparency to ()%
+            },
+            "setVolumeTo:": function(){
+            	// Set Volume to ()%
+            },
+            "show": function(){
+            	// Show
+            },
+            "showList:": function(){
+            	// Show List ()
+            },
+            "showVariable:": function(){
+            	// Show Variable ()
+            },
+            "soundLevel": function(){
+            	// Loudness
+            },
+            "sqrt": function(){
+            	// Sqrt ()
+            },
+            "stampCostume": function(){
+            	// Stamp
+            },
+            "startScene": function(){
+            	// Switch Backdrop to ()
+            },
+            "startSceneAndWait": function(){
+            	// Switch Backdrop to () and Wait
+            },
+            "stopAll": function(){
+            	// Stop All
+            },
+            "stopAllSounds": function(){
+            	// Stop All Sounds
+            },
+            "stopScripts": function(){
+            	// Stop ()
+            },
+            "stopSound:": function(){
+            	// Stop Sound ()
+            },
+            "stringLength:": function(){
+            	// Length of () (Operators block)
+            },
+            "tempo": function(){
+            	// Tempo
+            },
+            "think:": function(){
+            	// Think ()
+            },
+            "think:duration:elapsed:from:": function(){
+            	// Think () for () Secs
+            },
+            "timeAndDate": function(){
+            	// Current ()
+            },
+            "timer": function(){
+            	// Timer
+            },
+            "timerReset": function(){
+            	// Reset Timer
+            },
+            "timestamp": function(){
+            	// Days Since 2000
+            },
+            "touching:": function(){
+            	// Touching ()?
+            },
+            "touchingColor:": function(){
+            	// Touching Color ()?
+            },
+            "turnAwayFromEdge": function(){
+            	// Point Away From Edge
+            },
+            "turnLeft:": function(){
+            	// Turn () Degrees
+            },
+            "turnRight:": function(){
+            	// Turn () Degrees
+            },
+            "undefined": function(){
+            	// Undefined
+            },
+            "volume": function(){
+            	// Volume
+            },
+            "wait:elapsed:from:": function(){
+            	// Wait () Secs
+            },
+            "warpSpeed": function(){
+            	// All at Once
+            },
+            "whenClicked": function(){
+            	// When This Sprite Clicked
+            },
+            "whenCloned": function(){
+            	// When I Start as a Clone
+            },
+            "whenGreenFlag": function(){
+            	// When Green Flag Clicked
+            },
+            "whenIReceive": function(){
+            	// When I Receive ()
+            },
+            "whenKeyPressed": function(){
+            	// When () Key Pressed
+            },
+            "whenSceneStarts": function(){
+            	// When Backdrop Switches to ()
+            },
+            "whenSensorGreaterThan": function(){
+            	// When () is greater than ()
+            },
+            "xpos": function(){
+            	// X Position
+            },
+            "xpos:": function(){
+            	// Set X to ()
+            },
+            "xScroll": function(){
+            	// X Scroll
+            },
+            "ypos": function(){
+            	// Y Position
+            },
+            "ypos:": function(){
+            	// Set Y to ()
+            },
+            "yScroll": function(){
+            	// Y Scroll
+            },
+
+            //"": function(){},
+
+        });
+
+        function visit(proj, visitor){
+            visitor.visitInfo(proj.info);
+            visitor.visitStage(proj.stage);
+        }
+
     </script>
   </body>
 </html>
